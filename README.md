@@ -25,6 +25,6 @@ from rembg import remove
 
 import matplotlib.pyplot as plt
 
-import remdCvFind  # !!!!! Сопутствующий файл нужно взять из проэкта и загрузить в папку yolovo
+import remdCvFind  # !!!!! Сопутствующий файл нужно взять из проэкта и загрузить в папку с исполняемым файлом
 
 import detect      # !!!!! Нужен модифицированный detect.py  добавить в папку /yolovo5  иначе не вернет картинку и фитчи. (старый лучше сохранить)
