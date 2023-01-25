@@ -6,6 +6,7 @@
           2: 1й вариант + OpenCV распознание лиц и remdg обрезка фона
           
  pastDetect.py - главный файл:
+ 
           1: !python pastDetect.py -f data/images/2015.jpg     обрабатывает один файл 
           2: !python pastDetect.py                             обрабатывает  папку 'data/images/'  
 
