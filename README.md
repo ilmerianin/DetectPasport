@@ -37,5 +37,5 @@ import remdCvFind  # !!!!! Сопутствующий файл нужно взя
 import detect      # !!!!! Нужен модифицированный detect.py  добавить в папку /yolovo5  иначе не вернет картинку и фитчи. (старый лучше сохранить)
 
 
-# !cp best.pt /content/yolov5/  #обученная модель для паспортов
-# !cp detect.py /content/yolov5/   #  экспортируем detect.py
+          !cp best.pt /content/yolov5/  #обученная модель для паспортов
+          !cp detect.py /content/yolov5/   #  экспортируем detect.py
