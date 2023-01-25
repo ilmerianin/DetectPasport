@@ -7,30 +7,11 @@
           
  pastDetect.py - главный файл:
  
-          1: !python pastDetect.py -f data/images/2015.jpg     обрабатывает один файл 
+          1: !python pastDetect.py -h                          подсказка
+          2: !python pastDetect.py -f data/images/2015.jpg     обрабатывает один файл 
           2: !python pastDetect.py                             обрабатывает  папку 'data/images/'  
 
 
-
-import cv2 
-
-import os
-
-import numpy as np
-
-from importlib import reload 
-
-from scipy.spatial import distance
-
-import math
-
-import time
-
-import shutil
-
-from rembg import remove
-
-import matplotlib.pyplot as plt
 
 import remdCvFind  # !!!!! Сопутствующий файл нужно взять из проэкта и загрузить в папку с исполняемым файлом
 
