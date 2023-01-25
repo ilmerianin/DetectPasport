@@ -4,6 +4,10 @@
 
           1: Yolovo5 , openCV, 
           2: 1й вариант + OpenCV распознание лиц и remdg обрезка фона
+          
+ pastDetectYolovo5_v_1_0.py - главный файл
+
+
 
 import cv2 
 
