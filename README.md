@@ -7,9 +7,9 @@
           
  pastDetect.py - главный файл:
  
-          1: !python pastDetect.py -h                          подсказка
+          1: !python pastDetect.py -n                          добавляет папкуполучатель
           2: !python pastDetect.py -f data/images/2015.jpg     обрабатывает один файл 
-          2: !python pastDetect.py                             обрабатывает всю папку 'data/images/'  
+          2: !python pastDetect.py -p data/images              обрабатывает всю папку 'data/images/'  
 
 
 
