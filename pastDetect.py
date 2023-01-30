@@ -6,30 +6,51 @@ Created on Wed Jan 18 22:55:59 2023
 
 @author: wasilii
 
-Пример запуска файла из строки !python pastDetect.py -f data/images/2015.jpg
-        в папке файла будет создана папка paperNew = 'newYolovo'  или paperRemdg = 'newYolovoRemd'   куда помнщнен результат 
+Обработчик фото паспортов 
+    описание работы:
+        принимает либо папку с фотками, либо одиночную фотку паспорта
+        ищет с помощъю обученной Yolovo5 фитчи на паспорте (номера, фото, до 14 разл полей)
+        если не находит, вращает картинку по 90гр. если находит вычисляет  угол поворота и поворачиеает
+        обеляет артефакты поворота
+        отправляет в remdCvFind.cutRemd для обрезания фона ИИ rembg 
+                            если там после обрезкии найденно лицо в опред. зоне сохраняет результаты
+                            если нет, отрабатывает расчет обрезки по коорд. фитчей из Yolovo5 (менее точный результат)
+        вырезает фитчи и сохраняет во вложенные в <paperCorp> папки (<paperCorp> можно задать в пвраметре -n при вызове строкой)
         
+
+      
 Команды строки:
         
         
  !python pastDetect.py -p data/images/            - обработка папки с файлами       
  !python pastDetect.py -f data/images/2015.jpg    - обработка одного файла
- !python pastDetect.py -h                         - краткий help
-
+                       -n                         - имя папки получателя   
+Пример запуска файла из строки:
+       !python pastDetect.py -f data/images/2015.jpg -n corp132
+                    data/images/ 
+                                corp132/newYolovo       если отработал вариант без rembg 
+                                        newYolovoRemd   если отработал вариант c rembg 
+                                        badYolovoRemd   если фото не определенно
+  
+    
+  
 программа берет из  папки <pathFoto> файлы и если файлов с таким именем нет в папках  <paperNew> или <badFoto> запускает в анализ.
 т.е если из этих папок удлить файл он будет запущен в анализ по новой. 
+
 # clone the model
 # =============================================================================
 # !git clone https://github.com/ultralytics/yolov5
 # %cd yolov5
 # !pip install -r requirements.txt      # перенос файлов
 # !cp /content/drive/MyDrive/imagePasp/*  /content/yolov5/data/images 
-# !cp /content/drive/MyDrive/best.pt /content/yolov5/  #обученная модель для паспортов
+# !cp /content/drive/MyDrive/best.pt /content/yolov5/                 # обученная модель для паспортов модель 
 # !cp /content/drive/MyDrive/Yolov5_files/detect.py /content/yolov5   #  экспортируем detect.py
 # =============================================================================
 # https://github.com/ilmerianin/DetectPasport.git
 
 """
+
+import argparse
 import cv2 
 import os
 import sys
@@ -42,17 +63,18 @@ import shutil
 from rembg import remove
 import matplotlib.pyplot as plt
 import remdCvFind  # !!!!! Сопутствующий файл нужно взять из проэкта и загрузить в папку yolovo
-import detect  # !!!!!!    нужен модифицированный detect.py  иначе не вернет картинку и фитчи.  взять из проэкта
+import detect  # !!!!!!    нужен модифицированный detect.py  иначе не вернет картинку и фитчи.  взять из проэкта необходим  файл весов 
 
 # ============================= переменные для настройки рабрты кода ============================
+
 verbose = False # если нуны всплывающие окна установить в True
-remd= True   #True/False флаг применения Неиросети remd поиск фона работает долго и менее стабильно
+remd= True   #True/False флаг применения Неиросети remd поиск фона работает долго и менее стабильно но обрезает точнее
  
 badFoto = 'badYolovoRemd'       # название папки получателя не распознанных фото вложенна  в pathFoto 
-pathFoto = 'data/images/'       #'data/фото'  # папка источник файлов относительный путь
+pathFoto = 'data/images'        #'data/фото'  # папка источник файлов относительный путь
 paperNew = 'newYolovo'          # папка где будут новые файлы, вложенна  в pathFoto т.е новые файлы будут в папке 'data/фото/newfoto'
 paperRemdg = 'newYolovoRemd'    # папка где будут новые файлы при оборботке rembg, вложенна  в paperRemdg т.е новые файл
-
+paperCorp = 'corp'              # имя корня папки для расположения  newYolovo, newYolovoRemd, badYolovoRemd
 tempfile = 'tmp.jpg'    # название временный файл один можно удалить после работы
 
 # ============================= переменные для настройки рабрты кода===================================
@@ -93,17 +115,7 @@ def cutFoto(image, fitchList):
 
         x0 = fitchNp[indOld,0] -( x0_1 * kY)
 
-        print('kY', kY, 'kX', kX, ' x0;', x0)
-        # print('x0_1 * kX)', x0_1 * kX)
-        # print('x0_1', x0_1, 1-x0_1,  (1-x0_1) *kX) # возможно лучше ky
-        # print('y0_1', y0_1, 1-y0_1, (1-y0_1) *kY)
-        
-        # print('fitchNp[indOld]', fitchNp[indOld])
-        # )
-
         x0 = x0 if x0 > 0 else 0 
-
-        # print('x0_1 * kY)', (1-x0_1) * kX)
 
         x1 = fitchNp[indOld,0] + ((1-x0_1) * kY)
                 
@@ -115,22 +127,10 @@ def cutFoto(image, fitchList):
 
         y0, y1 = reshapeX(y0, y1, image.shape[0] )
         x0, x1 = reshapeX(x0, x1, image.shape[1] )
-        # print('image.shape:',image.shape)
 
-        
-        #print('new x0, x1 , y0, y1, x1-x0, y1-y0 \n',
-        #          x0, x1, ' ',y0,' ', y1,' ', x1-x0,'  ', y1-y0)
-        #                y       x
-        #image1 = image[10:2000,500:2050, :]
-        #image1 = image[y0:y1, x0:x1, :]
-        #print(image1.shape)
-
-        #print('y0;', y0)
         viewImage(DravRectangleImage(image.copy(), [[x0,y0,x1-x0,y1-y0]]))
         viewImage(image[y0:y1, x0:x1, :],waiK=700) 
-        # plt.figure(figsize= (30, 20))
-        # plt.imshow(img1)
-        # plt.show() 
+
 
         return image[y0:y1, x0:x1, :]
     
@@ -255,7 +255,7 @@ def cutFoto2(image, fitchList):
         return image[y0:y1, x0:x1, :]  # отослать обрезанное фото
 #%
 def findContur(image):
-    ''' превращение картинки в контуры удоьно убирает мусор '''
+    ''' превращение картинки в контуры удобно убирает мусор '''
   # Convert to graycsale
     img_gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
     # Blur the image for better edge detection
@@ -271,7 +271,7 @@ def findContur(image):
     return edges   
       
 def cutFotoRemdBoard(image, fitchList):
-    ''' обрезание с использованием сети rembg  '''
+    ''' обрезание с использованием сети rembg  не используется тут '''
     image_out = remove(image)   #удаление фона нейросетью   
     x0,y0, x1, y1 = cutFoto_for_Remd(image_out, fitchList) # получение расчнтных  границ паспорта 
     
@@ -293,7 +293,8 @@ def cutFotoRemdBoard(image, fitchList):
     return image_out[y:ya, x:xa, :]  # отослать обрезанное фото 
 
 def cutFoto_for_Remd(image, fitchList):
-    ''' Обрезка картинки вырезание фона ИИ и обрезкапо фитчам продвинутый вариант работает. '''
+    ''' Обрезка картинки вырезание фона ИИ и обрезкапо фитчам продвинутый вариант работает.
+    не используется тут'''
     
     image_out = remove(image) # удаление фона нейросетью
     
@@ -423,7 +424,7 @@ def cutFoto_for_Remd(image, fitchList):
 def getFoto(path=pathFoto):
     ''' Генератор фоток из папки по умолчанию фотки должны быть в папке с относительным путем <pathFoto>  'data/фото' 
     или переделайте путь в '''
-    
+    #print('genfoto path:', path)
     files = os.listdir(path)
     for file in files:
         
@@ -458,7 +459,7 @@ def DravRectangleImage(image, rectangle_NP):
 def compCentrRotate(fitchList):
     '''вычисление центра вращения 
     на вход лист фитчей из сетки
-    возвращает x,y центр фитчей'''
+    возвращает x,y  общий центр фитчей'''
     labels, fichNpRect = reraitLineToNp(fitchList) # преобразовать фитчи сети в np.массив
 
     xyMin = np.min(fichNpRect, axis = 0)
@@ -543,6 +544,7 @@ def findBoard(npImage):
     #print('найденна рамка\n x,y' , x, y, '\n x1,y1=', xa,ya)
    
     return x,y,xa,ya
+
 def windowClear(nparr):
     ''' проходит окошком и чистит от мусорра
      ширина окошка порога заданны в переменных 
@@ -557,12 +559,50 @@ def windowClear(nparr):
     #viewImage(nparr, 'Подрезка окном')
     return nparr
 
+def getCutBoxForNp(image, oneFitch):
+    ''' перевод координат одной фитчи в края бокса  '''
+    
+    x0 = oneFitch[0] - (oneFitch[2] * 0.5)
+    x1 = oneFitch[0] + (oneFitch[2] * 0.5)
+    y0 = oneFitch[1] - (oneFitch[3] * 0.5)
+    y1 = oneFitch[1] + (oneFitch[3] * 0.5)
+    y0, y1 = reshapeX(y0, y1, image.shape[0] )
+    x0, x1 = reshapeX(x0, x1, image.shape[1] )
+    
+    return x0, y0, x1, y1
+    
+    
+
+def cutCorp(image, fitchList, path):
+    ''' вырезка фитч и сохранение '''
+    labels, fitchNp  = reraitLineToNp(fitchList) # сделать NP
+    
+    ind4 = [index for (index, item) in enumerate(labels) if item == 4] # индексы 0 боксов
+    indL11 = [index for (index, item) in enumerate(labels) if item == 11]  
+    
+    if len(indL11) >0:
+     
+        for fase in indL11:
+            x0, y0, x1, y1 = getCutBoxForNp(image, fitchNp[[fase], ...][0])
+            #print('save fase', x0, y0, x1, y1)
+            saveImage(image[y0: y1, x0 : x1, ...], path, finename ='face.jpg')
+            
+    if len(ind4) >0:
+        for sign in ind4:
+            #print('save sign', x0, y0, x1, y1)
+            x0, y0, x1, y1 = getCutBoxForNp(image, fitchNp[[sign], ...][0])
+            
+            saveImage(image[y0: y1, x0 : x1, ...], path, finename ='sign.jpg')
+#    print('save foto path', path)
+#    saveImage(image, path, finename ='passport.jpg')
+    
+    return
+            
 
 def mostRotate(fitchList):
-    ''' Проверка на появление фитчей предположительно будут 
-    появляться когда паспорт находится в меньше 45 градусов поворота 
+    ''' Поиск угла поворота 
     вход : список фитч из нейросети
-    выход: угол если нашли и False если нет'''
+    выход: угол '''
     stepRotate = 45
     rotateAngel = stepRotate
 
@@ -619,7 +659,7 @@ def mostRotate(fitchList):
             if rasst(fitchNp[indOld, 0:2], fitchNp[ind, 0:2]) > fitchNp[indOld, 2]: # если боксы не совпадают
             
                 ange00 = angelRotate(fitchNp[indOld, 0:2], fitchNp[ind, 0:2], 0)
-                print( 'улол по 0 0 :',ange00, )
+                #print( 'улол по 0 0 :',ange00, )
                 
                 return  ange00  # возвращаем среднее 2х углов
                      
@@ -630,7 +670,7 @@ def mostRotate(fitchList):
             ind3 = indL3[0]
 
             if fitchNp[ind3, 0] < fitchNp[ind2, 0]:# если фитчи 2 и 3 правее 0 то переворачиваем фото
-                print(' если фитчи 2 и 3 правее фото')
+                #print(' если фитчи 2 и 3 правее фото')
                 return 180
 
             return angelRotate(fitchNp[ind2, 0:2], fitchNp[ind3, 0:2])
@@ -661,11 +701,11 @@ def saveImage(file, path=pathFoto, finename= 'newfoto.jpg'):
     ''' Сохранение картинки по умолчанию относительный путь к папке источнику path=data/фото  + вложенная папка paper = 'newfoto'
     можно изменить на ваше усмотрение или передать новое при вызове'''
         
-    print('saveImage Сохранаяю :', os.path.join(path, finename), file.shape )
+    #print('saveImage Сохранаяю :', os.path.join(path, finename), file.shape )
     
     cv2.imwrite( os.path.join(path, finename), file)    
      
-def viewImage(image,waiK= 500, nameWindow = 'message windows', verbose = verbose):
+def viewImage(image,waiK= 0, nameWindow = 'message windows', verbose = verbose):
     ''' Вывод в отдельное окошко 
     image - картинка numpy подобный массив
     waiK - int время ожидания окна если 0- будет ждать нажатия клавиши
@@ -682,12 +722,14 @@ def viewImage(image,waiK= 500, nameWindow = 'message windows', verbose = verbose
     return
 
 def checPaper(paper, path= pathFoto):
-    checpaper = os.path.join(pathFoto, paper)
+    ''' Проверка наличия и создание папок '''
+    checpaper = os.path.join(path, paper)
+    
     if  not os.path.isdir(checpaper):
         os.makedirs(checpaper)
         print('папки нет создаю!', checpaper)
     else:
-        print('папки есть')
+        print('папки есть', checpaper)
             
 
 def predFoto(file, pathFoto = pathFoto):
@@ -699,7 +741,7 @@ def predFoto(file, pathFoto = pathFoto):
         координаты фитч (класс, координаты, чтото похожее наплощадь не понял)'''
     im0 , line = detect.run(
             weights='best.pt',  # model path or triton URL названия файла весов
-            source= pathFoto + file ,  # file/dir/URL/glob/screen/0(webcam)
+            source= file ,  # file/dir/URL/glob/screen/0(webcam)
             #data=ROOT / 'data/coco128.yaml',  # dataset.yaml path
             imgsz=(640, 640),  # inference size (height, width)
             conf_thres=0.25,  # confidence threshold доверительный порог
@@ -728,10 +770,10 @@ def predFoto(file, pathFoto = pathFoto):
     )
     return im0 , line 
 
-def oneFileDetect(image, file, fileMod = tempfile, pathFoto = pathFoto, paperNew = paperNew):
+def oneFileDetect(image, file, fileMod = tempfile, pathFoto = pathFoto, paperNew = paperNew, paperCorp=paperCorp , savePassCorp = True):
     ''' Обработчик одного файла '''
                       # новое имя файла
-    saveImage(image, finename = fileMod)  # созранить во временный для загрузки в неиронку ( для синзронизации ориентации)
+    saveImage(image, path= os.path.join(pathFoto, paperCorp), finename = fileMod)  # созранить во временный для загрузки в неиронку ( для синзронизации ориентации)
     
     angel = 90            # первичный угол поворота
     n = 5                 # Ограничение по попыткам прохода
@@ -740,19 +782,15 @@ def oneFileDetect(image, file, fileMod = tempfile, pathFoto = pathFoto, paperNew
     flBadDetect = True   # флаг отсутствия распознавания
                          # если файлы не обрабатывались ещё то
     while angel != 0:        # цикл работы с одной фото
-        
-        im0 , line  = predFoto(fileMod)#fileMod)   # пред паспорт
+        #print('before pred ', pathFoto, fileMod)
+        im0 , line  = predFoto(os.path.join(pathFoto, paperCorp, fileMod))#fileMod)   # пред паспорт
         
           # блок проверки синхронности ориентации изображений
         if image.shape[0] != im0.shape[0]: # если  прочитанное и выданное сетью изображения по разному ориентированны
             image = rotationNP(image)      # повернуть на 90 град прочитанное
-            print(' Синхронизирую изображения поворотом NP   90 ')
-        if image.shape[0] == im0.shape[0]:
-            print(' Изображения синхронны')
-        else:
-            print(' Ошибка синхронизации !!!!!!!!!!!!')
+            #print(' Синхронизирую изображения поворотом NP   90 ')
 
-        print('\n pred:>>> фото:', file,' Количество фитчей:', len(line))         # вывод начального изо
+        #print('\n pred:>>> фото:', file,' Количество фитчей:', len(line))         # вывод начального изо
 
         viewImage(im0, nameWindow='pred')            
         angel = mostRotate(line) # получение угла вращения 
@@ -764,12 +802,10 @@ def oneFileDetect(image, file, fileMod = tempfile, pathFoto = pathFoto, paperNew
                 angel = 0
         else:
             long1 = 2
-          
-        print('angel:', angel)
 
         if 1 > abs(angel):  #  угол поворота меньше 1 гр. запустить обрезку и сохранить
                         
-            print('подрезаю')
+            #print('подрезаю')
             
             if remd:
                 viewImage(im0, nameWindow='before remd') 
@@ -781,37 +817,47 @@ def oneFileDetect(image, file, fileMod = tempfile, pathFoto = pathFoto, paperNew
                     image[ind]= np.array([255]*nm)
                 
                 
-                imageRemdCut = remdCvFind.cutRemd(image.copy())
+                imageRemdCut = remdCvFind.cutRemd(image.copy()) # попытка использовать remdg
+                print('imageRemdCut ', imageRemdCut.shape)
                 if imageRemdCut.shape[0] != 16: # если фотка не прошла то формат возврата такой
                     
                     viewImage(imageRemdCut, nameWindow='remd') 
-                    filtmp = 'tmp1.jpg'               # сохраняем для загрузки в yolovo
-                    saveImage(imageRemdCut, finename = filtmp)
+                    #filtmp = 'tmp1.jpg'               # сохраняем для загрузки в yolovo
+                    #saveImage(imageRemdCut, path= os.path.join(pathFoto, paperCorp), finename = filtmp)
                                     
-                    imX , lineNow  = predFoto(filtmp)#fileMod)   # пред паспорт
+                    #imX , lineNow  = predFoto(filtmp)#fileMod)   # пред паспорт
      
-                    viewImage(imX ,nameWindow='Remd Cut pred '+ str(len(line)- len(lineNow))+' '+str(len(lineNow))) # показать
+                    #viewImage(imX ,nameWindow='Remd Cut pred '+ str(len(line)- len(lineNow))+' '+str(len(lineNow))) # показать
                     flBadDetect = False # файл распознанн и сохраннен
                     angel = 0
 
-                    print('\n  -------------------------------------------------------- \n rembg:', file)
-                    saveImage(imageRemdCut, path = os.path.join(pathFoto, paperRemdg) ,finename = file)
-                    image= imX
+                    #print('\n  ------  rembg:', file)
+                    if savePassCorp:
+                        pathCorp = os.path.join(pathFoto, paperCorp, paperRemdg)
+                        saveImage(imageRemdCut, path = pathCorp , finename ='passport.jpg')
+                        cutCorp(image.copy(), line, path = pathCorp) # сохранение вырезок
+                    else:    
+                        saveImage(imageRemdCut, path = os.path.join(pathFoto, paperRemdg) ,finename = file)
+                    #image= imX
                     break
                 
             
-            image = cutFoto2(image, line)
+            imageN = cutFoto2(image, line)
             flBadDetect = False # файл распознанн и сохраннен
             angel = 0
-            
-            saveImage(image, path = os.path.join(pathFoto, paperNew) , finename = file)
+            if savePassCorp:
+                pathCorp =os.path.join(pathFoto, paperCorp, paperNew)
+                saveImage(imageN, path = pathCorp , finename ='passport.jpg')
+                cutCorp(image.copy(), line, path = pathCorp) # сохранение вырезок
+            else:
+                saveImage(image, path = os.path.join(pathFoto, paperNew) , finename = file)
             
             #viewImage(image,waiK =700 ,nameWindow='Cut foto '+ str(angel)) # показать
                                # вывод в окно
             break # если угол найдет и отработан то следующая фотка
 
         elif 1 <= abs(angel) and angel < 44 :  #  если получен угол поворота
-            print("Поворачиваю на ", angel )
+            #print("Поворачиваю на ", angel )
             centrRotate = compCentrRotate(line)   # Поиск центра вращения
            
             image = rotation(image, centrRotate, round(angel))  # Вращение методом OpenCV применимо когда есть центр вращения
@@ -819,43 +865,68 @@ def oneFileDetect(image, file, fileMod = tempfile, pathFoto = pathFoto, paperNew
 
         elif 44 < abs(angel):  #  если угол поворота больше 
             if  abs(angel) == 180:
-                print(' Rotation NP   90 + ', end=' ')
+                #print(' Rotation NP   90 + ', end=' ')
                 
                 image = rotationNP(image)                  
-            print(' Rotation NP   90 ')
+            #print(' Rotation NP   90 ')
             image = rotationNP(image)                             # Вращение методом numpy ( не режет края а просто поворачивает матрицу)
             
 
 
         fileMod = tempfile              # новое имя файла
-        saveImage(image, finename = fileMod)
-        print('Сохраняю дла повтора :', fileMod)
+        #print('Сохраняю дла повтора :', fileMod)
+        saveImage(image, path= os.path.join(pathFoto, paperCorp), finename = fileMod)
+
 
         n -=1
         if n<= 0:            
             break
         
     #print(' Превышен лимит поворотов')
+            
+    if flBadDetect: # если файл не распознанн сохранить обрезанную копию для следующего алгоритма
+           print('\n Файл , не распознанн,')
+                   # сохраняем в отдельную папку image с фитчами
+           #saveImage(image, paper= cutFoto,  finename = filename) 
+                   # просто копируем эту фотку из папки без изменений
+           shutil.copyfile(os.path.join(pathFoto, file),  os.path.join(pathFoto, paperCorp, badFoto, file))
+    
+    
     return flBadDetect
     
-def PaperDetect(pathFoto= pathFoto, test = False):   
+def PaperDetect(pathFoto= pathFoto, paperCorp = paperCorp,test = False):   
     ''' Обработка прохода по папкам '''
-    checPaper(paperNew, pathFoto)
-    if paperNew != paperRemdg:
-        checPaper(paperRemdg, pathFoto)
-    checPaper(badFoto, pathFoto)
+    #print('pathFoto:', pathFoto)
+    path = os.path.join(pathFoto, paperCorp)
+    checPaper(paperNew, path)          # создание папки c 
+    if paperNew != paperRemdg:             # создание папки c если папки одинаковы
+        checPaper(paperRemdg, path)
+    checPaper(badFoto, path)           # создание папки c
+ 
     
     
     nextFoto = True
-    genfoto= getFoto()           # инициализация генератора фоток
+    genfoto= getFoto(path = pathFoto)           # инициализация генератора фоток
 
     
     startTime = time.time()                  # время запуска
     countFiles = len(os.listdir(pathFoto))   # кол- во фото для расч времени
-    countF = os.listdir(os.path.join(pathFoto, paperNew))
-    countF.extend(os.listdir(os.path.join(pathFoto, badFoto)) )  #сумма обработанных файлов
+    
+    try:
+        countF = os.listdir(os.path.join(path, paperNew))
+    except FileNotFoundError: 
+        countF =[]
+  
+    try:
+        countF.extend(os.listdir(os.path.join(path, badFoto)) )  #сумма обработанных файлов
+    except FileNotFoundError: 
+        pass
+    
     if paperNew != paperRemdg: # если папка отдельна renmdg
-        countF.extend(os.listdir(os.path.join(pathFoto, paperRemdg)) )  #сумма обработанных файлов
+        try:
+            countF.extend(os.listdir(os.path.join(path, paperRemdg)) )  #сумма обработанных файлов
+        except FileNotFoundError: 
+            pass
         
     restFiles = countFiles - len(countF)                         # осталось файлов обработать
     count =0
@@ -876,7 +947,7 @@ def PaperDetect(pathFoto= pathFoto, test = False):
         count +=1
         print('\n Новое--------------- фото:', file, '  ', round((time.time() - startTime) / count * (restFiles - count)/ 60), ' min', type(image))  # file1)
         
-        flBadDetect = oneFileDetect(image, file)
+        flBadDetect = oneFileDetect(image, file, pathFoto= pathFoto, paperCorp = paperCorp, savePassCorp = False)
         
         if test: # тестовый вариант
             print('Итоговая:',tempfile)
@@ -888,61 +959,100 @@ def PaperDetect(pathFoto= pathFoto, test = False):
                        # сохраняем в отдельную папку image с фитчами
                #saveImage(image, paper= cutFoto,  finename = filename) 
                        # просто копируем эту фотку из папки без изменений
-               shutil.copyfile(os.path.join(pathFoto, file),  os.path.join(pathFoto, badFoto, file))
+               shutil.copyfile(os.path.join(pathFoto, file),  os.path.join(pathFoto,paperCorp, badFoto, file))
     return
     
-def main():
-    arg_v = sys.argv
-#print('begin prog')
-#print('sys.argv:',arg_v,' len:',len(arg_v))
-        
-    if len(arg_v) > 1:
-        if arg_v[1]=='-f': # один файл
-            file = arg_v[2]
-            print('Обработка одичного файла')
-            if os.path.isfile(file):
 
-                image = cv2.imread( file, -1)
-                pathList = os.path.split(file)
+def parse_o():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('-p', type=str, default= '0', help=' путь к папке источнику файлов  !python pastDetect.py -p data/images ')
+    parser.add_argument('-n', type=str, default= '0', help=' название папки с corp файлами по умолчанию corp')
+    parser.add_argument('-f', type=str, default='0', help='[путь]имя файла  !python pastDetect.py -f data/images/2015.jpg  ')
+  
+    
+    opt = parser.parse_args()
+    #print(opt)
+    return opt
+
+
+def main(
+        p ,
+        f ,
+        n ,
+        h=False 
+        ):
+        
+    global pathFoto
+    global paperCorp
+    
+    if n != '0': # Задание папки corp
+        
+        #print('Путь для файлов corp')
+        if type(n)== str:
+            paperCorp = n
+            #print('Определенна папки получатель файлов corp:', paperCorp)
+        else:
+            #print('папка corp не определенна')
+            pass
+            
+    if f !='0': # один файл
+
+       if os.path.isfile(f):
+           
+           image = cv2.imread( f, -1)
+           pathList = os.path.split(f)
+
+           pathFoto = pathList[0]
+
+           path = os.path.join(pathList[0], paperCorp)
+ 
+           checPaper(paperNew, path) # проверяем наличие папки
+           checPaper(paperRemdg, path) # проверяем наличие папки
+           checPaper(badFoto, path) # проверяем наличие папки
+           #checPaper(paperCorp, pathList[0]) # проверяем наличие папки
                 
-                checPaper(paperNew, pathList[0]) # проверяем наличие папки
-                checPaper(paperRemdg, pathList[0] ) # проверяем наличие папки
-                checPaper(badFoto, pathList[0]) # проверяем наличие папки
+           flBadDetect = oneFileDetect(image, file = pathList[-1], pathFoto = pathList[0], paperCorp=paperCorp )
                 
-                flBadDetect = oneFileDetect(image, file = pathList[-1], pathFoto = pathList[0])
-                
-                if flBadDetect:
-                    print('не получилось распознать')
-                else:
-                    print('Результат:', os.path.join(pathFoto, paperNew, pathList[-1]))
-            else:
-                print('файл не найден')
-                
-        if arg_v[1]=='-h': # подсказка
+           if flBadDetect:
+                #print('не получилось распознать')
+                pass
+           else:
+                #print('Результат:', os.path.join(pathList[0], paperNew, pathList[-1]))
+                pass
+
+       else:
+            print('файл не найден')
+
+    elif p !='0':
+        
+        #
+        pathFoto = p
+        
+        #print('Обработка папки источника файлов', pathFoto)
+        if os.path.isdir(p):
+            #print('Обработка папки источника файлов', p)
+            PaperDetect(pathFoto = pathFoto, paperCorp = paperCorp)
+        else:
+            print(f'Папка {p} не найденна')
+
+
+
+    elif h: # подсказка
             print('Пример запуска файла из строки: \n',
                   ' !python pastDetect.py -p data/images             - обработка папки с файлами \n',      
                   ' !python pastDetect.py -f data/images/2015.jpg    - обработка одного файла \n',
                   ' !python pastDetect.py -h                         - краткий help')
             print('Если аргументов нет,  обрабатывает папку:', pathFoto)
             print(f' В папке источнике будет созданно 3 папки: \n {badFoto}  - папка получатель не распознанных фото  \n {paperNew} - папка получатель обрезанных фото без применения remdg \n {paperRemdg}  - папка получатель обрезанных фото посредством remdg \n ilmerianin@mail.ru' )
-
-        if arg_v[1]=='-p': # 
-            pathPaper = arg_v[2]
-            print('Обработка папки источника файлов')
-            if os.path.isdir(pathPaper):
-                PaperDetect(pathFoto = pathPaper)
-            else:
-                print(f'Папка {pathPaper} не найденна')
             
 
     else:
         print(' Обрабатываю файлы ы папке:', pathFoto)
-        PaperDetect()
+        #PaperDetect()
     return
         
 
-
 if __name__ == '__main__':
-    
-    main()
+    argP = parse_o()
+    main(**vars(argP))
 

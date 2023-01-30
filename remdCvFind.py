@@ -5,8 +5,14 @@ Created on Wed Jan 11 19:51:48 2023
 
 @author: wasilii
 
-запускаю командой
-python yolov5/detect.py --weights yolov5/best.pt --conf 0.25 --save-txt --exist-ok --save-conf --save-crop --augment --source
+Набор методов для обработки фото паспортов.
+     1. Вырезает фон с помощью ИИ rembg
+     2. Обесцвечивает  для поиска границ openCV
+     3. Ищет зону с границами, ост. обрезает numpy
+     4. Распознает лицо openCV
+     5. По расположению найденного лица через коэф. определяет правильность
+     если все ок. возвращпет обрезанное изображение
+      иначе np.array[16,0]
 
 """
 
@@ -17,10 +23,15 @@ import os
 import time 
 import numpy as np
 #import matplotlib.pyplot as plt
-from rembg import remove
+from rembg import remove # Нейросеть  вырезает фон
+
+
+# было в составе самостоятельного файла
 cutFoto = 'cutFotoAfter_Mod_Pas' # название папки получателя не
 pathFoto = 'data/images'   #'data/фото'  # папка источник файлов относительный путь
 paperNew = 'newfotoCV'     # папка где будут новые файлы, вложенна  в pathFoto т.е новые файлы будут в папке 'data/фото/newfoto'
+
+verbose = False # Показывать всплывающие окна для отладки 
 
 def Find_cascade_fich(face_cascade, image):
     ''' ищет лица на фото  работает 13.05.22 cv.CascadeClassifier очень посредственно
@@ -84,7 +95,21 @@ def findfith(image):
     return   faces   
 
 
-
+def viewImage(image,waiK= 0, nameWindow = 'message windows', verbose = verbose):
+    ''' Вывод в отдельное окошко 
+    image - картинка numpy подобный массив
+    waiK - int время ожидания окна если 0- будет ждать нажатия клавиши
+    nameWindow - название окна лучше по английски иначе проблемы с размером
+    verbose - показывать или нет True/False
+    '''
+    if verbose:
+        cv.namedWindow(nameWindow, cv.WINDOW_NORMAL)
+        cv.imshow(nameWindow, image)
+        cv.waitKey(waiK)
+        cv.destroyAllWindows()
+    else:
+        pass
+    return
 
 
 def windowClear(nparr):
@@ -152,16 +177,17 @@ def choiseFace(rectFace):
     ''' выбор большей высоте картинки как лица 
     отсеивает заведомо мусорные загогулины, но может и фотку если есть большие фитчи'''
     sq0 = 0
-    #print( 'choiseFace len()', len(rectFace))
+    print( 'choiseFace len()', len(rectFace))
     
     #print(type(rectFace))
-    #print(rectFace)
+    print(rectFace)
     
     ind = rectFace[:,2].argsort() # Сортируем по высоте
-    #print(type(ind), ind)
+    print(type(ind), ind)
 
     if len(ind) > 4:
-        return rectFace[ind[-4:-1], :]  # возвращаем 3 самых больших бокса
+        print(rectFace[ind[-4:], :] )
+        return rectFace[ind[-4:], :]  # возвращаем 3 самых больших бокса
  
     elif len(ind) > 0:
          return rectFace[ind, :]  
@@ -173,10 +199,10 @@ def choiseFaceSq(rectFace):
     ''' выбор большей по площади картинки как лица 
     отсеивает заведомо мусорные загогулины, но может и фотку если есть большие фитчи'''
     sq0 = 0
-    #print( 'choiseFace len()', len(rectFace))
+    print( 'choiseFace len()', len(rectFace))
     #ind = rectFace[:,2].argsort()
-    print(type(rectFace))
-    print(rectFace)
+    #print(type(rectFace))
+    #print(rectFace)
     if len(rectFace)  > 0:
         if rectFace[0].shape[0]>1:
             for (x, y, w, h) in rectFace:
@@ -220,12 +246,22 @@ def giveListFiles(patn = pathFoto, pathGood = paperNew, pathBad =cutFoto ):
     return goodfiles, badFiles
 
 def cutRemd(image):
+    ''' 
+     1. Вырезает фон с помощью ИИ rembg
+     2. Обесцвечивает  для поиска границ openCV
+     3. Ищет зону с границами, ост. обрезает numpy
+     4. Распознает лицо openCV
+     5. По расположению найденного лица через коэф. определяет правильность
+     если все ок. возвращпет обрезанное изображение
+      иначе np.array[16,0]
+      '''
                      # fotogen = getFoto(path='data/фото') 
     countF =0
     flBadDetect = True   # флаг отсутствия распознавания
                 # если файлы не обрабатывались ещё то                            
     rectFace = findfith(image)        #поиск лиц методом openCV
  
+    viewImage(DravRectangleImage(image.copy(), rectFace), waiK=0, nameWindow = 'before all Koef' )
     
     if len(rectFace)>=1:  # если лиц много
     
@@ -248,14 +284,14 @@ def cutRemd(image):
            
             #if 4.5 < koef[2] and koef[2]< 7 and 6.36 < koef[3] and koef[3] < 9.25 and 6.8 < koef1 and koef1 <9.95 and 2.1 < koef2 and koef2 < 4.7:
             print(koef[2],koef[3], koef1, koef2 )
-            #viewImage(DravRectangleImage(image, rectAll), waiK=500 )
+            viewImage(DravRectangleImage(image.copy(), rectAll), waiK=0, nameWindow = 'before Koef' )
             
-            if 4.3 < koef[2] and koef[2]< 9.3 and 6.36 < koef[3] and koef[3] < 11.1 and 6.2 < koef1 and koef1 <13 and 1.6 < koef2 and koef2 < 5.1:
+            if 4.3 < koef[2] and koef[2]< 9.3 and 6.36 < koef[3] and koef[3] < 11.3 and 6.2 < koef1 and koef1 <13 and 1.6 < koef2 and koef2 < 5.1:
                     
                     if len(image.shape)==2: #если фотка дез 3го измерения
                         image = np.expand_dims(image, axis=-1) #добавить измерение
                     image = image[y:ya, x:xa, : ]  # срез нужной области картинки
-                    #viewImage(image,waiK= 500)
+                    viewImage(image,waiK= 0, nameWindow = 'Goood Koef')
                     return image
                     
     return np.array([0,0,0,0]*4)
